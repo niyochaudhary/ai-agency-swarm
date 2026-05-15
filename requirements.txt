@@ -1,0 +1,8 @@
+streamlit
+pandas
+requests
+beautifulsoup4
+chromadb
+groq
+duckduckgo-search
+python-dotenv
