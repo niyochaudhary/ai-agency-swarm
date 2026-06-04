@@ -9,8 +9,9 @@ class SearchTool:
         Searches for businesses in a specific niche and location.
         Returns a list of dictionaries with name, website, and snippet.
         """
-        query = f"{niche} in {location} business website"
-        print(f"[Search Tool] Searching for: {query}...")
+        # Refined query to avoid directories and lists
+        query = f'"{niche}" {location} official website -directory -list -wiki -facebook'
+        print(f"[Search Tool] Searching for official websites: {query}...")
         
         results = []
         try:

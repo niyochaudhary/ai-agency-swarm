@@ -1,8 +1,13 @@
 streamlit
 pandas
 requests
-beautifulsoup4
 chromadb
-groq
-duckduckgo-search
 python-dotenv
+selenium
+webdriver-manager
+googlesearch-python
+beautifulsoup4
+lxml
+schedule
+loguru
+duckduckgo-search

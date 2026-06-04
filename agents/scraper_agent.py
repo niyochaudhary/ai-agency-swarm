@@ -23,14 +23,18 @@ class ScraperAgent:
         leads = []
         try:
             raw_leads = self.search_tool.search_businesses(niche, location, max_results=count)
-            for lead in raw_leads:
-                if "google.com" not in lead['website'] and "yelp.com" not in lead['website']:
-                    leads.append(lead)
+            if raw_leads:
+                for lead in raw_leads:
+                    # Robust check for website and name
+                    ws = lead.get('website')
+                    name = lead.get('name')
+                    if ws and name and "google.com" not in ws and "yelp.com" not in ws:
+                        leads.append(lead)
         except Exception as e:
             print(f"[Scraper Agent] Search tool failed: {e}")
 
         # AI FALLBACK: If no leads found via search, use Groq to brainstorm leads
-        if not leads:
+        if len(leads) < 1:
             print("[Scraper Agent] Search failed or blocked. Using AI Brain to find leads...")
             leads = self.ai_brainstorm_leads(niche, location, count)
         
@@ -44,7 +48,7 @@ class ScraperAgent:
             "Content-Type": "application/json"
         }
         
-        prompt = f"Identify {count} real businesses (name and website) in the '{niche}' niche located in '{location}'. Return ONLY a JSON list of objects with 'name' and 'website' keys. No other text."
+        prompt = f"Identify {count} real businesses (name, website, and contact email) in the '{niche}' niche located in '{location}'. Return ONLY a JSON list of objects with 'name', 'website', and 'email' keys. No other text."
         
         payload = {
             "model": DEFAULT_MODEL,

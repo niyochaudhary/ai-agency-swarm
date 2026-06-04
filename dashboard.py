@@ -25,10 +25,14 @@ import agents.hunter_agent
 import agents.builder_agent
 import agents.research_agent
 import agents.scraper_agent
+import agents.fiverr_agent
+import agents.freelancer_agent
 importlib.reload(agents.hunter_agent)
 importlib.reload(agents.builder_agent)
 importlib.reload(agents.research_agent)
 importlib.reload(agents.scraper_agent)
+importlib.reload(agents.fiverr_agent)
+importlib.reload(agents.freelancer_agent)
 
 import memory.database
 importlib.reload(memory.database)
@@ -105,8 +109,14 @@ st.markdown("""
     """, unsafe_allow_html=True)
 
 # --- AUTHENTICATION ---
+SESSION_FILE = os.path.join(current_dir, ".session")
+
 if 'authenticated' not in st.session_state:
-    st.session_state['authenticated'] = False
+    # Check if a persistent session file exists
+    if os.path.exists(SESSION_FILE):
+        st.session_state['authenticated'] = True
+    else:
+        st.session_state['authenticated'] = False
 
 def login():
     st.markdown("<h1 style='text-align: center; color: white;'>👑 AI Agency Portal</h1>", unsafe_allow_html=True)
@@ -115,9 +125,13 @@ def login():
         with st.form("Login"):
             user = st.text_input("Username")
             pw = st.text_input("Password", type="password")
+            remember = st.checkbox("Keep me logged in ( survives refresh )", value=True)
             if st.form_submit_button("Launch Swarm"):
                 if user == config.DASHBOARD_USERNAME and pw == config.DASHBOARD_PASSWORD:
                     st.session_state['authenticated'] = True
+                    if remember:
+                        with open(SESSION_FILE, "w") as f:
+                            f.write("authenticated")
                     st.rerun()
                 else:
                     st.error("Invalid credentials, Admiral.")
@@ -137,6 +151,8 @@ menu = st.sidebar.radio("Navigation", ["🚀 Overview", "🔍 Start New Hunt", "
 
 if st.sidebar.button("🔒 Logout"):
     st.session_state['authenticated'] = False
+    if os.path.exists(SESSION_FILE):
+        os.remove(SESSION_FILE)
     st.rerun()
 
 # --- Overview ---
@@ -146,7 +162,7 @@ if menu == "🚀 Overview":
     total = len(leads['ids']) if leads['ids'] else 0
     col1, col2, col3 = st.columns(3)
     with col1: st.markdown(f'<div class="metric-card"><h3>Total Leads</h3><h1>{total}</h1></div>', unsafe_allow_html=True)
-    with col2: st.markdown(f'<div class="metric-card"><h3>Active Swarms</h3><h1>4</h1></div>', unsafe_allow_html=True)
+    with col2: st.markdown(f'<div class="metric-card"><h3>Active Swarms</h3><h1>5</h1></div>', unsafe_allow_html=True)
     with col3: st.markdown(f'<div class="metric-card"><h3>Revenue Goal</h3><h1>1 Cr</h1></div>', unsafe_allow_html=True)
     
     st.markdown("---")
@@ -177,12 +193,19 @@ elif menu == "🔍 Start New Hunt":
 # --- Memory Vault ---
 elif menu == "📂 Memory Vault":
     st.title("📂 Memory Vault")
+    
     leads = db.get_all_leads()
     if leads['ids']:
         df_data = []
         for i in range(len(leads['ids'])):
             m = leads['metadatas'][i]
-            df_data.append({"Name": m.get('name', 'N/A'), "Website": m.get('website', 'N/A'), "Niche": m.get('niche', 'N/A')})
+            df_data.append({
+                "Name": m.get('name', 'N/A'), 
+                "Website": m.get('website', 'N/A'), 
+                "Email": m.get('email', 'Not Found'),
+                "LinkedIn": m.get('linkedin', 'N/A'),
+                "Niche": m.get('niche', 'N/A')
+            })
         
         st.dataframe(pd.DataFrame(df_data), use_container_width=True)
         
@@ -195,15 +218,35 @@ elif menu == "📂 Memory Vault":
                 pitch_content = leads['documents'][i]
                 
                 col1, col2 = st.columns([2, 1])
+                lead_id = leads['ids'][i]
                 with col1:
-                    st.markdown("#### 📝 AI Generated Pitch")
-                    st.text_area("Content", pitch_content, height=400, label_visibility="collapsed")
+                    st.markdown("#### 📝 Edit Outreach Message")
+                    # Capture edited text
+                    current_pitch = st.text_area("Edit your message here", value=pitch_content, height=450, key=f"edit_pitch_{lead_id}")
+                    
+                    if st.button("💾 Save & Update Message", key=f"save_{lead_id}"):
+                        db.update_lead_pitch(lead_id, current_pitch)
+                        st.success("Message saved! Now you can send it.")
+                        time.sleep(0.5)
+                        st.rerun()
                 
                 with col2:
-                    st.markdown("#### 📧 Outreach")
-                    recipient_email = st.text_input("CEO Email", value=lead_data.get('email', ''))
+                    st.markdown("#### 📧 Outreach Console")
+                    recipient_email = st.text_input("Recipient Email", value=lead_data.get('email', ''), key=f"email_{lead_id}")
                     
-                    if st.button("🚀 Send Outreach Now"):
+                    # Social Contact Options
+                    found_linkedin = lead_data.get('linkedin', '')
+                    
+                    c1, c2 = st.columns(2)
+                    with c1:
+                        if found_linkedin:
+                            st.link_button("🔗 LinkedIn Profile", found_linkedin, use_container_width=True)
+                        else:
+                            st.button("🔗 No LinkedIn Found", disabled=True, use_container_width=True, key=f"noln_{lead_id}")
+                    
+                    st.markdown("---")
+                    
+                    if st.button("🚀 Send THIS Edited Message", key=f"send_{lead_id}"):
                         if not recipient_email:
                             st.error("Email required!")
                         else:
@@ -212,13 +255,17 @@ elif menu == "📂 Memory Vault":
                                 master.sender.app_password = st.session_state.get('app_password', getattr(config, 'EMAIL_PASSWORD', ""))
                                 master.sender.dry_run = not st.session_state.get('live_mode', False)
                                 
-                                if master.sender.send_email(sel, recipient_email, pitch_content):
-                                    st.success("Message Transmitted!")
-                                    st.balloons()
+                                # Send the EXACT content from the text area
+                                if master.sender.send_email(sel, recipient_email, current_pitch):
+                                    if master.sender.dry_run:
+                                        st.warning("⚠️ Message Logged (Dry Run Mode). Enable 'Live Mode' in Settings.")
+                                    else:
+                                        st.success("🚀 Message Sent Successfully!")
+                                        st.balloons()
                                 else: st.error("Transmission failed.")
                 
-                if st.button("🗑️ Purge Lead Data"):
-                    db.delete_lead(leads['ids'][i])
+                if st.button("🗑️ Purge Lead Data", key=f"purge_btn_{lead_id}"):
+                    db.delete_lead(lead_id)
                     st.rerun()
 
 # --- Project Delivery ---
@@ -228,30 +275,83 @@ elif menu == "🏗️ Project Delivery":
     if leads['ids']:
         for i in range(len(leads['ids'])):
             name = leads['metadatas'][i].get('name', 'Unknown')
+            lead_id = leads['ids'][i]
+            pitch_data = leads['documents'][i]
+            
             with st.expander(f"💎 {name}"):
-                if st.button(f"🛠️ Build Full Solution for {name}", key=f"b_{i}"):
-                    with st.spinner("AI Factory is coding..."):
-                        path = builder_swarm.launch_project(name, leads['documents'][i])
-                        st.session_state[f"path_{i}"] = path
-                        st.success("Project Engineered!")
+                st.markdown("### 🛠️ Step 1: Configuration")
+                custom_reqs = st.text_area("📝 Customer Specific Requirements / Instructions", 
+                                          value=f"Build a custom AI solution for {name} that focuses on their niche. Ensure it is professional and functional.",
+                                          key=f"reqs_{i}", height=100)
                 
-                if f"path_{i}" in st.session_state:
-                    st.info(f"📂 Build Path: {st.session_state[f'path_{i}']}")
-                    delivery_email = st.text_input("Delivery Email", value=leads['metadatas'][i].get('email', ''), key=f"e_{i}")
+                delivery_email = st.text_input("Customer Email", value=leads['metadatas'][i].get('email', ''), key=f"e_{i}")
+                
+                st.markdown("---")
+                col1, col2 = st.columns(2)
+                
+                # --- DEMO BUILD ---
+                with col1:
+                    st.subheader("1️⃣ Demo Phase")
+                    if st.button(f"🏗️ Build Demo Roadmap", key=f"build_demo_{i}"):
+                        with st.spinner("AI is designing roadmap..."):
+                            path = builder_swarm.launch_project(name, f"DEMO ONLY: {pitch_data}\n\nREQS: {custom_reqs}")
+                            st.session_state[f"demo_path_{i}"] = path
+                            st.success("Demo Roadmap Ready!")
                     
-                    if st.button(f"📬 Deliver to CEO", key=f"d_{i}"):
-                        with st.spinner("Delivering..."):
-                            roadmap_file = os.path.join(st.session_state[f"path_{i}"], "roadmap.md")
-                            roadmap_content = open(roadmap_file, "r").read() if os.path.exists(roadmap_file) else "Roadmap inside."
-                            
-                            delivery_pitch = f"Hello {name},\n\nYour AI Solution is ready.\n\nROADMAP:\n{roadmap_content}\n\nCodebase is prepared."
-                            
-                            master.sender.sender_email = st.session_state.get('sender_email', getattr(config, 'SENDER_EMAIL', ""))
-                            master.sender.app_password = st.session_state.get('app_password', getattr(config, 'EMAIL_PASSWORD', ""))
-                            master.sender.dry_run = not st.session_state.get('live_mode', False)
-                            
-                            if master.sender.send_email(name, delivery_email, delivery_pitch):
-                                st.success("Solution Delivered!")
+                    if f"demo_path_{i}" in st.session_state:
+                        if st.button(f"🎥 Send Demo to Gmail", key=f"send_demo_{i}"):
+                            with st.spinner("Sending Demo..."):
+                                roadmap_file = os.path.join(st.session_state[f"demo_path_{i}"], "roadmap.md")
+                                roadmap_content = open(roadmap_file, "r").read() if os.path.exists(roadmap_file) else "Custom AI Roadmap prepared."
+                                demo_pitch = f"Hello {name},\n\nI've engineered a custom AI Roadmap for your business.\n\nROADMAP PREVIEW:\n{roadmap_content[:800]}...\n\nLet's discuss this demo!"
+                                
+                                master.sender.sender_email = st.session_state.get('sender_email', getattr(config, 'SENDER_EMAIL', ""))
+                                master.sender.app_password = st.session_state.get('app_password', getattr(config, 'EMAIL_PASSWORD', ""))
+                                master.sender.dry_run = not st.session_state.get('live_mode', False)
+                                
+                                if master.sender.send_email(f"DEMO: {name}", delivery_email, demo_pitch):
+                                    st.success("Demo Sent Successfully!")
+                                else: st.error("Failed to send demo.")
+
+                # --- FULL PROJECT BUILD ---
+                with col2:
+                    st.subheader("2️⃣ Project Phase")
+                    if st.button(f"🚀 Build Full Project", key=f"build_full_{i}"):
+                        with st.spinner("AI Factory is coding full solution..."):
+                            path = builder_swarm.launch_project(name, f"FULL BUILD: {pitch_data}\n\nREQS: {custom_reqs}")
+                            st.session_state[f"full_path_{i}"] = path
+                            st.success("Full Project Engineered!")
+                    
+                    if f"full_path_{i}" in st.session_state:
+                        if st.button(f"📬 Deliver to Gmail", key=f"send_full_{i}"):
+                            with st.spinner("Delivering Project..."):
+                                delivery_pitch = f"Hello {name},\n\nYour full custom AI Solution is ready for deployment.\n\nAll assets have been prepared."
+                                master.sender.sender_email = st.session_state.get('sender_email', getattr(config, 'SENDER_EMAIL', ""))
+                                master.sender.app_password = st.session_state.get('app_password', getattr(config, 'EMAIL_PASSWORD', ""))
+                                master.sender.dry_run = not st.session_state.get('live_mode', False)
+                                
+                                if master.sender.send_email(f"PROJECT: {name}", delivery_email, delivery_pitch):
+                                    st.success("Project Delivered Successfully!")
+                                else: st.error("Failed to deliver project.")
+
+                st.markdown("---")
+                st.markdown("### 📑 Proposal & Agreement")
+                col_p1, col_p2 = st.columns(2)
+                with col_p1:
+                    proj_price = st.number_input("Project Price", value=500, key=f"price_{i}")
+                    currency = st.selectbox("Currency", ["USD", "INR", "GBP", "EUR"], key=f"curr_{i}")
+                with col_p2:
+                    milestones = st.text_area("Milestones", value="- 30% Advance Deposit\n- 40% On First Prototype\n- 30% Final Delivery", height=100, key=f"ms_{i}")
+                
+                if st.button(f"📄 Generate Agreement", key=f"gen_{i}"):
+                    proposal_text = builder_swarm.generate_proposal(name, f"AI Automation Suite for {name}", proj_price, currency, milestones)
+                    st.session_state[f"proposal_{i}"] = proposal_text
+                
+                if f"proposal_{i}" in st.session_state:
+                    st.markdown('<div class="email-box">', unsafe_allow_html=True)
+                    st.markdown(st.session_state[f"proposal_{i}"])
+                    st.markdown('</div>', unsafe_allow_html=True)
+                    st.download_button("📥 Download Agreement (Markdown)", st.session_state[f"proposal_{i}"], file_name=f"Agreement_{name}.md", key=f"dl_{i}")
 
 # --- Sent Logs ---
 elif menu == "📧 Sent Logs":

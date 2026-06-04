@@ -34,7 +34,15 @@ class HunterAgent:
             response = requests.post(GROQ_BASE_URL, headers=headers, json=payload)
             if response.status_code == 200:
                 result = response.json()
-                return result['choices'][0]['message']['content'].strip()
+                raw_pitch = result['choices'][0]['message']['content'].strip()
+                
+                # Aggressively remove AI generated signatures
+                split_keywords = ["Best regards,", "Best,", "Sincerely,", "Regards,", "Warm regards,", "[Your Name]"]
+                for keyword in split_keywords:
+                    if keyword in raw_pitch:
+                        raw_pitch = raw_pitch.split(keyword)[0].strip()
+                        
+                return raw_pitch
             else:
                 error_msg = f"AI Generation Failed (Status {response.status_code})"
                 print(f"[Error] {error_msg}. Response: {response.text}")

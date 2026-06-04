@@ -13,11 +13,20 @@ class SwarmMemory:
         self.hunts_collection = self.client.get_or_create_collection(name="hunts")
         self.outbox_collection = self.client.get_or_create_collection(name="outbox")
 
-    def save_lead(self, name, website, pitch, niche="N/A", location="N/A"):
+    def save_lead(self, name, website, pitch, niche="N/A", location="N/A", email="", phone="", linkedin=""):
         lead_id = str(uuid.uuid4())
         self.leads_collection.add(
             documents=[str(pitch) if pitch is not None else "No pitch generated."],
-            metadatas=[{"name": name, "website": website, "niche": niche, "location": location, "timestamp": str(time.time())}],
+            metadatas=[{
+                "name": name, 
+                "website": website, 
+                "niche": niche, 
+                "location": location, 
+                "email": email, 
+                "phone": phone,
+                "linkedin": linkedin,
+                "timestamp": str(time.time())
+            }],
             ids=[lead_id]
         )
         return lead_id
@@ -49,6 +58,13 @@ class SwarmMemory:
 
     def delete_lead(self, lead_id):
         self.leads_collection.delete(ids=[lead_id])
+
+    def update_lead_pitch(self, lead_id, new_pitch):
+        """Updates the pitch document for a specific lead."""
+        self.leads_collection.update(
+            ids=[lead_id],
+            documents=[str(new_pitch)]
+        )
 
     def clear_database(self):
         try: self.client.delete_collection(name="leads")

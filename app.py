@@ -36,14 +36,17 @@ def main():
             lead = {"name": company, "website": website, "description": "Manual entry"}
             
             print(f"\n--- Starting Deep Process for {company} ---")
-            research = master.researcher.deep_research(website)
+            research, _, _ = master.researcher.deep_research(website)
             print(f"[Research] Complete.")
             
             pitch = master.hunter.generate_pitch(company, research)
             if pitch:
                 master.memory.save_lead(company, website, pitch)
-                email = f"ceo@{website.split('//')[-1].replace('www.', '')}"
-                master.sender.send_email(company, email, pitch)
+                # Naive email guessing improvement
+                domain = website.split('//')[-1].split('/')[0].replace('www.', '')
+                guessed_email = f"info@{domain}" # Using info@ is generally safer than ceo@
+                print(f"[System] Attempting send to guessed email: {guessed_email}")
+                master.sender.send_email(company, guessed_email, pitch)
                 print(f"\n[AI Pitch Generated]\n{pitch}\n")
             
         elif choice == "3":

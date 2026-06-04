@@ -17,9 +17,9 @@ class ResearchAgent:
         """
         Scrapes a website and uses Groq to summarize the business model and needs.
         """
-        content = self.scraper.scrape_website(url)
+        content, emails, _, linkedin = self.scraper.scrape_website(url)
         if not content:
-            return "Could not fetch website content."
+            return "Could not fetch website content.", [], []
 
         print(f"[Research Agent] Analyzing website data for {url} using AI...")
         
@@ -41,11 +41,32 @@ class ResearchAgent:
             response = requests.post(GROQ_BASE_URL, headers=headers, json=payload)
             if response.status_code == 200:
                 result = response.json()
-                return result['choices'][0]['message']['content'].strip()
+                summary = result['choices'][0]['message']['content'].strip()
+                
+                # AI Prediction for email if missing
+                if not emails:
+                    predict_payload = {
+                        "model": self.model,
+                        "messages": [
+                            {"role": "system", "content": "Find contact email. Return JSON: {\"email\": \"...\"}"},
+                            {"role": "user", "content": f"Website Content: {summary}"}
+                        ],
+                        "response_format": {"type": "json_object"},
+                        "temperature": 0.2
+                    }
+                    pred_resp = requests.post(GROQ_BASE_URL, headers=headers, json=predict_payload)
+                    if pred_resp.status_code == 200:
+                        try:
+                            p_json = json.loads(pred_resp.json()['choices'][0]['message']['content'])
+                            if not emails and "@" in p_json.get('email', ''):
+                                emails = [p_json['email']]
+                        except: pass
+                
+                return summary, emails, linkedin
             else:
-                return "AI Analysis failed."
+                return "AI Analysis failed.", emails, linkedin
         except Exception as e:
-            return f"Error during research: {e}"
+            return f"Error during research: {e}", [], []
 
 if __name__ == "__main__":
     agent = ResearchAgent()
