@@ -6,11 +6,11 @@ from agents.sender_agent import SenderAgent
 from memory.database import DatabaseManager
 
 class SwarmMaster:
-    def __init__(self):
+    def __init__(self, sender_dry_run=None):
         self.scraper = ScraperAgent()
         self.researcher = ResearchAgent()
         self.hunter = HunterAgent()
-        self.sender = SenderAgent()
+        self.sender = SenderAgent(dry_run=sender_dry_run)
         self.memory = DatabaseManager()
 
     def orchestrate_hunt(self, niche, location, count=5):

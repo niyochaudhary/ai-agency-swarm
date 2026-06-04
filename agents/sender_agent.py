@@ -4,9 +4,12 @@ import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from memory.database import DatabaseManager
+from config import LIVE_MODE
 
 class SenderAgent:
-    def __init__(self, dry_run=True):
+    def __init__(self, dry_run=None):
+        if dry_run is None:
+            dry_run = not LIVE_MODE
         self.dry_run = dry_run
         self.sender_email = ""
         self.app_password = ""
@@ -19,6 +22,12 @@ class SenderAgent:
         if self.dry_run:
             self.memory.log_email(lead_name, lead_email, subject, pitch, status="Logged Successfully")
             return True
+
+        if not self.sender_email or not self.app_password:
+            error_status = "Failed: Missing SMTP credentials"
+            self.memory.log_email(lead_name, lead_email, subject, pitch, status=error_status)
+            print(f"[Sender Agent] {error_status}")
+            return False
 
         # LIVE MODE
         try:

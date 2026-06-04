@@ -107,6 +107,10 @@ st.markdown("""
 # --- AUTHENTICATION ---
 if 'authenticated' not in st.session_state:
     st.session_state['authenticated'] = False
+if 'stop_autopilot' not in st.session_state:
+    st.session_state['stop_autopilot'] = False
+if 'autopilot_status' not in st.session_state:
+    st.session_state['autopilot_status'] = 'Idle'
 
 def login():
     st.markdown("<h1 style='text-align: center; color: white;'>👑 AI Agency Portal</h1>", unsafe_allow_html=True)
@@ -165,12 +169,42 @@ elif menu == "🔍 Start New Hunt":
     with col2: l = st.text_input("Target Location", placeholder="e.g. New York")
     
     count = st.slider("Leads to find", 1, 20, 5)
-    
+    runs = st.number_input("Hunt runs", min_value=1, max_value=20, value=1, step=1)
+    interval = st.number_input("Minutes between hunts", min_value=0, max_value=60, value=0, step=1)
+
+    status = st.session_state.get('autopilot_status', 'Idle')
+    if status == 'Running':
+        st.success('Autopilot status: Running')
+    elif status == 'Stopping':
+        st.warning('Autopilot status: Stopping — current run will finish.')
+    else:
+        st.info(f'Autopilot status: {status}')
+
+    if st.button('🛑 Stop Autopilot'):
+        st.session_state['stop_autopilot'] = True
+        st.session_state['autopilot_status'] = 'Stopping'
+        st.warning('Stop requested. The current run will finish, and all future runs will stop.')
+
     if st.button("🔥 Launch Autonomous Hunt"):
         if n and l:
+            st.session_state['stop_autopilot'] = False
             with st.spinner("🤖 Swarm is searching the web..."):
-                master.orchestrate_hunt(n, l, count=count)
-                st.success("Hunt Complete! Leads secured in Memory Vault.")
+                for run_index in range(runs):
+                    if st.session_state['stop_autopilot']:
+                        st.warning("Autopilot stop requested. Ending the hunt sequence.")
+                        break
+
+                    st.write(f"Run {run_index + 1}/{runs}")
+                    master.orchestrate_hunt(n, l, count=count)
+                    if run_index + 1 < runs and interval > 0 and not st.session_state['stop_autopilot']:
+                        st.write(f"Waiting {interval} minutes before next hunt...")
+                        time.sleep(interval * 60)
+
+                if st.session_state['stop_autopilot']:
+                    st.info("Autopilot stopped. No more hunts will be launched.")
+                else:
+                    st.success("Hunt Complete! Leads secured in Memory Vault.")
+
                 time.sleep(2)
                 st.rerun()
 
